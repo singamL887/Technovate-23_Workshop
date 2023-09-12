@@ -1,0 +1,76 @@
+git clone https://github.com/singamL887/Technovate-23_Workshop.git
+
+kind create cluster --config kind_config.yaml
+
+export PATH=$PWD/bin:$PATH
+
+istioctl version
+
+istioctl install --set profile=demo
+
+kubectl label namespace default istio-injection=enabled
+kubectl get namespace -L istio-injection
+
+kubectl apply -f samples/httpbin/httpbin.yaml
+kubectl apply -f samples/sleep/sleep.yaml
+
+kubectl describe pod httpbin-86869bccff-fl8lx
+
+kubectl get pod httpbin-86869bccff-fl8lx -o yaml
+
+kubectl exec -it -n default sleep-9454cc476-xg7kb -- curl http://httpbin:8000
+
+kubectl logs --follow -n default sleep-9454cc476-xg7kb -c istio-proxy
+kubectl get pods -o wide
+
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml
+kubectl wait --namespace metallb-system \
+                --for=condition=ready pod \
+                --selector=app=metallb \
+                --timeout=90s
+docker network inspect -f '{{.IPAM.Config}}' kind
+kubectl apply -f metallb-config.yaml
+
+kubectl apply -f services/catalog/kubernetes/catalog.yaml
+kubectl apply -f services/webapp/kubernetes/webapp.yaml
+
+kubectl apply -f ingress_sample/coolstore-gw.yaml
+
+istioctl -n istio-system proxy-config listener deploy/istio-ingressgateway
+
+istioctl proxy-config route deploy/istio-ingressgateway -o json --name http.8080  -n istio-system
+
+kubectl apply -f ingress_sample/coolstore-vs.yaml
+
+curl -vvv http://172.18.255.200:80
+curl -vvv http://172.18.255.200:80 -H "Host: webapp.istioinaction.io"
+
+kubectl create -n istio-system secret tls webapp-credential --key certs/3_application/private/webapp.istioinaction.io.key.pem --cert certs/3_application/certs/webapp.istioinaction.io.cert.pem
+
+kubectl delete -f ingress_sample/coolstore-gw.yaml
+
+kubectl apply -f ingress_TLS/coolstore-gw-tls.yaml
+
+curl -vvv https://172.18.255.200 -H "Host: webapp.istioinaction.io"
+curl -vvv https://172.18.255.200 -H "Host: webapp.istioinaction.io" --cacert certs/2_intermediate/certs/ca-chain.cert.pem
+curl -H "Host: webapp.istioinaction.io" https://webapp.istioinaction.io:443 --cacert certs/2_intermediate/certs/ca-chain.cert.pem --resolve webapp.istioinaction.io:443:172.18.255.200
+
+kubectl create -n istio-system secret generic webapp-credential-mtls --from-file=tls.key=certs/3_application/private/webapp.istioinaction.io.key.pem --from-file=tls.crt=certs/3_application/certs/webapp.istioinaction.io.cert.pem --from-file=ca.crt=certs/2_intermediate/certs/ca-chain.cert.pem
+
+kubectl apply -f ingress_MTLS/coolstore-gw-mtls.yaml
+
+curl -H "Host: webapp.istioinaction.io" https://webapp.istioinaction.io:443 --cacert certs/2_intermediate/certs/ca-chain.cert.pem --resolve webapp.istioinaction.io:443:172.18.255.200 --cert certs/4_client/certs/webapp.istioinaction.io.cert.pem --key certs/4_client/private/webapp.istioinaction.io.key.pem
+
+kubectl apply -f https_redirect/coolstore-gw-tls-redirect.yaml
+
+curl -vvv http://172.18.255.200 -H 'Host: webapp.istioinaction.io'
+
+kubectl create -n istio-system secret tls catalog-credential --key certs2/3_application/private/catalog.istioinaction.io.key.pem --cert certs2/3_application/certs/catalog.istioinaction.io.cert.pem
+
+kubectl apply -f ingress_multi_TLS/coolstore-gw-multi-tls.yaml
+
+kubectl apply -f ingress_multi_TLS/catalog-vs.yaml
+
+curl -H "Host: webapp.istioinaction.io" https://webapp.istioinaction.io:443 --cacert certs/2_intermediate/certs/ca-chain.cert.pem --resolve webapp.istioinaction.io:443:172.18.255.200
+
+curl -H "Host: catalog.istioinaction.io" https://catalog.istioinaction.io:443/items --cacert certs2/2_intermediate/certs/ca-chain.cert.pem --resolve catalog.istioinaction.io:443:172.18.255.200
